@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管道机器人控制系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    
+    <!-- Tailwind配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#0FC6C2',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        success: '#00B42A',
+                        dark: '#1D2129',
+                        'dark-2': '#4E5969',
+                        'dark-3': '#86909C',
+                        'light-1': '#F2F3F5',
+                        'light-2': '#E5E6EB',
+                        'light-3': '#C9CDD4',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .grid-dashboard {
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            }
+            .btn-active {
+                background-color: #165DFF !important;
+                color: white !important;
+            }
+   
+            /* 新增：AI回复加载动画 */
+            .animate-bounce {
+                animation: bounce 1.4s infinite ease-in-out both;
+            }
+            @keyframes bounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-5px); }
+            }
+
+            #aiChatHistory::-webkit-scrollbar {
+                width: 6px;
+            }
+            #aiChatHistory::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 10px;
+            }
+            #aiChatHistory::-webkit-scrollbar-thumb {
+                background: #c1c1c1;
+                border-radius: 10px;
+            }
+            #aiChatHistory::-webkit-scrollbar-thumb:hover {
+                background: #a1a1a1;
+            }
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-light-1 font-inter text-dark overflow-x-hidden">
+    <!-- 侧边栏导航 -->
+    <div class="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0" id="sidebar">
+        <div class="flex items-center justify-between h-16 px-6 border-b border-light-2">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                    <i class="fa fa-robot text-white"></i>
+                </div>
+                <h1 class="text-lg font-semibold text-primary">管道机器人监控系统</h1>
+            </div>
+            <button class="lg:hidden text-dark-3 hover:text-primary" id="closeSidebar">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="py-4 overflow-y-auto scrollbar-hide">
+            <nav class="px-4 space-y-1">
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg bg-primary/10 text-primary group" data-view="dashboard">
+                    <i class="fa fa-dashboard w-5 h-5 mr-3 text-primary"></i>
+                    <span>控制面板</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="analysis">
+                    <i class="fa fa-area-chart w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>状态分析</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="path">
+                    <i class="fa fa-map-marker w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>路径成像</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="devices">
+                    <i class="fa fa-cogs w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>设备管理</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="history">
+                    <i class="fa fa-history w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>历史记录</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="alerts">
+                    <i class="fa fa-bell w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>报警管理</span>
+                    <span class="ml-auto inline-flex items-center justify-center px-2 py-1 text-xs font-medium bg-danger text-white rounded-full">3</span>
+                </a>
+                <a href="#" class="nav-link flex items-center px-4 py-3 text-sm font-medium rounded-lg text-dark-2 hover:bg-light-1 hover:text-primary group transition-all duration-200" data-view="settings">
+                    <i class="fa fa-wrench w-5 h-5 mr-3 text-dark-3 group-hover:text-primary"></i>
+                    <span>系统设置</span>
+                </a>
+            </nav>
+            
+            <div class="mt-8 px-4">
+                <h3 class="text-xs font-semibold text-dark-3 uppercase tracking-wider">设备状态</h3>
+                <div class="mt-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-dark-2">电池电量</span>
+                        <span class="text-sm font-medium text-success">85%</span>
+                    </div>
+                    <div class="w-full bg-light-2 rounded-full h-2">
+                        <div class="bg-success h-2 rounded-full" style="width: 85%"></div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-dark-2">信号强度</span>
+                        <span class="text-sm font-medium text-warning">65%</span>
+                    </div>
+                    <div class="w-full bg-light-2 rounded-full h-2">
+                        <div class="bg-warning h-2 rounded-full" style="width: 65%"></div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-dark-2">运行时长</span>
+                        <span class="text-sm font-medium text-dark">4.2h</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="lg:pl-64 flex flex-col min-h-screen">
+        <!-- 顶部导航栏 -->
+        <header class="bg-white shadow-sm z-10">
+            <div class="flex items-center justify-between h-16 px-4 lg:px-6">
+                <div class="flex items-center">
+                    <button class="lg:hidden text-dark-3 hover:text-primary mr-4" id="openSidebar">
+                        <i class="fa fa-bars"></i>
+                    </button>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fa fa-search text-dark-3"></i>
+                        </div>
+                        <input type="text" class="bg-light-1 border border-light-2 text-dark text-sm rounded-lg focus:ring-primary focus:border-primary block w-full pl-10 p-2.5" placeholder="搜索设备、数据或警报...">
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <button class="relative p-2 text-dark-3 hover:text-primary hover:bg-light-1 rounded-full transition-colors duration-200">
+                        <i class="fa fa-bell"></i>
+                        <span class="absolute top-1 right-1 inline-flex items-center justify-center w-4 h-4 text-xs font-medium text-white bg-danger rounded-full">3</span>
+                    </button>
+                    
+                    <button class="relative p-2 text-dark-3 hover:text-primary hover:bg-light-1 rounded-full transition-colors duration-200">
+                        <i class="fa fa-cog"></i>
+                    </button>
+                    
+                    <div class="flex items-center">
+                        <img class="h-8 w-8 rounded-full object-cover" src="https://picsum.photos/id/1005/200/200" alt="用户头像">
+                        <div class="ml-3 hidden md:block">
+                            <p class="text-sm font-medium text-dark">工程师</p>
+                            <p class="text-xs text-dark-3">系统管理员</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 页面内容容器 -->
+        <main class="flex-1 p-4 lg:p-6 overflow-x-hidden">
+            <!-- 控制面板视图 -->
+            <div class="view-content" id="dashboard-view">
+                <!-- 页面标题 -->
+                <div class="mb-6">
+                    <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-dark">管道机器人监控中心</h2>
+                    <p class="text-dark-3 mt-1">实时监控和控制管道巡检机器人</p>
+                </div>
+                
+                <!-- 状态概览卡片 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white rounded-xl p-5 card-shadow hover:shadow-lg transition-shadow duration-300">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-dark-3 text-sm">运行状态</p>
+                                <h3 class="text-2xl font-bold text-dark mt-1">正常运行中</h3>
+                                <p class="text-success text-sm mt-1 flex items-center">
+                                    <i class="fa fa-circle mr-1 animate-pulse"></i>
+                                    机器人在线
+                                </p>
+                            </div>
+                            <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                <i class="fa fa-play text-primary text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-5 card-shadow hover:shadow-lg transition-shadow duration-300">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-dark-3 text-sm">已巡检长度</p>
+                                <h3 class="text-2xl font-bold text-dark mt-1">1.2 km</h3>
+                                <p class="text-success text-sm mt-1 flex items-center">
+                                    <i class="fa fa-arrow-up mr-1"></i>
+                                    较昨日 +15%
+                                </p>
+                            </div>
+                            <div class="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center">
+                                <i class="fa fa-road text-secondary text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                  
+                    
+                    <div class="bg-white rounded-xl p-5 card-shadow hover:shadow-lg transition-shadow duration-300">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-dark-3 text-sm">检测到的缺陷</p>
+                                <h3 class="text-2xl font-bold text-dark mt-1">7 处</h3>
+                                <p class="text-danger text-sm mt-1 flex items-center">
+                                    <i class="fa fa-exclamation-triangle mr-1"></i>
+                                    2处需要紧急处理
+                                </p>
+                            </div>
+                            <div class="w-12 h-12 rounded-full bg-warning/10 flex items-center justify-center">
+                                <i class="fa fa-exclamation-circle text-warning text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-5 card-shadow hover:shadow-lg transition-shadow duration-300">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-dark-3 text-sm">电池电量</p>
+                                <h3 class="text-2xl font-bold text-dark mt-1">85%</h3>
+                                <p class="text-warning text-sm mt-1 flex items-center">
+                                    <i class="fa fa-battery-three-quarters mr-1"></i>
+                                    预计还能运行3.5小时
+                                </p>
+                            </div>
+                            <div class="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+                                <i class="fa fa-battery-full text-success text-xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 主要内容网格 -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 左侧区域 -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- 实时视频监控 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">实时视频监控</h3>
+                                <div class="flex space-x-2">
+                                    <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-light-1 text-dark-2 hover:bg-light-2 transition-colors duration-200">
+                                        <i class="fa fa-refresh mr-1"></i>刷新
+                                    </button>
+                                    <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors duration-200">
+                                        <i class="fa fa-download mr-1"></i>保存
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="relative aspect-video bg-dark rounded-lg overflow-hidden">
+                                <video id="liveVideo" autoplay muted playsinline class="w-full h-full object-cover">
+                                    您的浏览器不支持视频播放
+                                </video>
+                                <!-- 实时指示器 -->
+                                 <img id="liveImage"
+                                    class="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+                                    alt="实时视频帧" />
+                                <div class="absolute top-4 right-4 bg-danger text-white text-xs font-medium px-2 py-1 rounded-full flex items-center">
+                                    <span class="w-2 h-2 bg-white rounded-full mr-1 animate-pulse"></span>
+                                    实时
+                                </div>
+                            </div>
+                            
+                            <!-- 视频控制 -->
+                            <div class="mt-4 flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-step-backward"></i>
+                                    </button>
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-backward"></i>
+                                    </button>
+                                    <button class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors duration-200" id="videoPlayPauseBtn">
+                                        <i class="fa fa-pause"></i>
+                                    </button>
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-forward"></i>
+                                    </button>
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-step-forward"></i>
+                                    </button>
+                                </div>
+                                
+                                <div class="flex items-center space-x-3">
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-volume-up"></i>
+                                    </button>
+                                    
+                                    <div class="w-24 h-1 bg-light-2 rounded-full">
+                                        <div class="bg-dark-3 h-1 rounded-full" style="width: 75%"></div>
+                                    </div>
+                                    
+                                    <div class="text-sm text-dark-2">00:00:00 / 00:00:00</div>
+                                    
+                                    <button class="p-2 text-dark-3 hover:text-primary rounded-full hover:bg-light-1 transition-colors duration-200">
+                                        <i class="fa fa-cog"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 缺陷检测分析 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">供暖管道缺陷检测分析</h3>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-dark-3">时间范围:</span>
+                                    <select class="text-sm border border-light-2 rounded-lg px-3 py-1.5 focus:ring-primary focus:border-primary">
+                                        <option>今日</option>
+                                        <option>本周</option>
+                                        <option>本月</option>
+                                        <option>全年</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h4 class="text-sm font-medium text-dark-2">裂缝</h4>
+                                        <span class="text-sm font-semibold text-danger">3</span>
+                                    </div>
+                                    <div class="w-full bg-light-2 rounded-full h-2">
+                                        <div class="bg-danger h-2 rounded-full" style="width: 43%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h4 class="text-sm font-medium text-dark-2">腐蚀</h4>
+                                        <span class="text-sm font-semibold text-warning">2</span>
+                                    </div>
+                                    <div class="w-full bg-light-2 rounded-full h-2">
+                                        <div class="bg-warning h-2 rounded-full" style="width: 29%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h4 class="text-sm font-medium text-dark-2">变形</h4>
+                                        <span class="text-sm font-semibold text-primary">2</span>
+                                    </div>
+                                    <div class="w-full bg-light-2 rounded-full h-2">
+                                        <div class="bg-primary h-2 rounded-full" style="width: 29%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="h-64">
+                                <canvas id="defectChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- 实时控制 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <h3 class="text-lg font-semibold text-dark mb-4">实时控制</h3>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h4 class="text-sm font-medium text-dark">速度控制</h4>
+                                        <span class="text-sm font-medium text-dark" id="speedDisplay">15 m/min</span>
+                                    </div>
+                                    <input type="range" min="5" max="30" value="15" class="w-full h-2 bg-light-2 rounded-lg appearance-none cursor-pointer" id="speedSlider">
+                                    <div class="flex justify-between mt-2">
+                                        <span class="text-xs text-dark-3">慢速</span>
+                                        <span class="text-xs text-dark-3">快速</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h4 class="text-sm font-medium text-dark">灯光亮度</h4>
+                                        <span class="text-sm font-medium text-dark" id="lightDisplay">75%</span>
+                                    </div>
+                                    <input type="range" min="0" max="100" value="75" class="w-full h-2 bg-light-2 rounded-lg appearance-none cursor-pointer" id="lightSlider">
+                                    <div class="flex justify-between mt-2">
+                                        <span class="text-xs text-dark-3">关闭</span>
+                                        <span class="text-xs text-dark-3">最大</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h4 class="text-sm font-medium text-dark">数据采集</h4>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" checked class="sr-only peer" id="dataCollection">
+                                            <div class="w-9 h-5 bg-light-2 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                        </label>
+                                    </div>
+                                    <div class="text-xs text-dark-3 mt-2">
+                                        正在采集: 温度、湿度、压力、图像
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4 grid grid-cols-4 gap-2">
+                                <!-- 前进按钮 -->
+                                <button class="control-btn py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-200" id="forwardBtn">
+                                    <i class="fa fa-arrow-up mr-1"></i> 前进
+                                </button>
+                                <!-- 左转按钮 -->
+                                <button class="control-btn py-2 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="leftBtn">
+                                    <i class="fa fa-arrow-left mr-1"></i> 左转
+                                </button>
+                                <!-- 右转按钮 -->
+                                <button class="control-btn py-2 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="rightBtn">
+                                    <i class="fa fa-arrow-right mr-1"></i> 右转
+                                </button>
+                                <!-- 后退按钮 -->
+                                <button class="control-btn py-2 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="backwardBtn">
+                                    <i class="fa fa-arrow-down mr-1"></i> 后退
+                                </button>
+                            </div>
+
+                            <script>
+                            // 按钮动作映射表（按钮ID对应要发送的动作）
+                            const actionMap = {
+                                forwardBtn: "forward",   // 前进
+                                leftBtn: "left",         // 左转
+                                rightBtn: "right",       // 右转
+                                backwardBtn: "backward"  // 后退
+                            };
+
+                            // 按钮图标映射表（恢复状态时使用）
+                            const iconMap = {
+                                forwardBtn: "fa-arrow-up",
+                                leftBtn: "fa-arrow-left",
+                                rightBtn: "fa-arrow-right",
+                                backwardBtn: "fa-arrow-down"
+                            };
+
+                            // 按钮文本映射表
+                            const textMap = {
+                                forwardBtn: "前进",
+                                leftBtn: "左转",
+                                rightBtn: "右转",
+                                backwardBtn: "后退"
+                            };
+
+                            // 为所有控制按钮绑定事件
+                            Object.keys(actionMap).forEach(btnId => {
+                                const btn = document.getElementById(btnId);
+                                if (btn) {
+                                    btn.addEventListener('click', async function() {
+                                        // 1. 切换按钮激活状态（变蓝）
+                                        document.querySelectorAll('.control-btn').forEach(item => {
+                                            item.classList.remove('bg-primary', 'text-white', 'hover:bg-primary/90');
+                                            item.classList.add('bg-light-1', 'text-dark-2', 'hover:bg-light-2');
+                                        });
+                                        this.classList.remove('bg-light-1', 'text-dark-2', 'hover:bg-light-2');
+                                        this.classList.add('bg-primary', 'text-white', 'hover:bg-primary/90');
+
+                                        // 2. 发送请求逻辑
+                                        const action = actionMap[btnId];
+                                        try {
+                                            // 禁用按钮并显示加载状态
+                                            btn.disabled = true;
+                                            btn.innerHTML = `
+                                                <i class="fa fa-spinner fa-spin mr-1"></i> 发送中...
+                                            `;
+
+                                            // 发送到中间服务（替换为你的服务地址）
+                                            const response = await fetch('http://localhost:3000/udp-send', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ action: action }) // 发送对应动作
+                                            });
+
+                                            // 处理成功状态
+                                            if (response.ok) {
+                                                btn.innerHTML = `
+                                                    <i class="fa fa-check-circle mr-1"></i> 已发送
+                                                `;
+                                            } else {
+                                                throw new Error('发送失败');
+                                            }
+                                        } catch (error) {
+                                            console.error('错误:', error);
+                                            btn.innerHTML = `
+                                                <i class="fa fa-exclamation-circle mr-1"></i> 发送失败
+                                            `;
+                                        } finally {
+                                            // 2秒后恢复初始状态
+                                            setTimeout(() => {
+                                                btn.innerHTML = `
+                                                    <i class="fa ${iconMap[btnId]} mr-1"></i> ${textMap[btnId]}
+                                                `;
+                                                btn.disabled = false;
+                                            }, 2000);
+                                        }
+                                    });
+                                }
+                            });
+                            </script>
+
+                            
+                            <div class="mt-4 flex justify-between">
+                                <button class="py-2 px-4 bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors duration-200" id="emergencyStop">
+                                    <i class="fa fa-stop-circle mr-1"></i> 紧急停止
+                                </button>
+                                <button class="py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-200">
+                                    <i class="fa fa-refresh mr-1"></i> 重置系统
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 最近检测到的缺陷 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">最近检测到的缺陷</h3>
+                                <button class="text-sm text-primary hover:text-primary/80 transition-colors duration-200">
+                                    查看全部 <i class="fa fa-arrow-right ml-1"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-light-2">
+                                    <thead>
+                                        <tr>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tl-lg">缺陷类型</th>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">位置</th>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">严重程度</th>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">发现时间</th>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tr-lg">状态</th>
+                                            <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-light-2">
+                                        <tr class="hover:bg-light-1 transition-colors duration-150">
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <div class="flex items-center">
+                                                    <div class="w-8 h-8 rounded-full bg-danger/10 flex items-center justify-center mr-3">
+                                                        <i class="fa fa-crack text-danger"></i>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-sm font-medium text-dark">裂缝</div>
+                                                        <div class="text-xs text-dark-3">直径: 3.2cm</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-007 / 1.2km</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-danger/10 text-danger rounded-full">高</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 09:35</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">待处理</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                                <button>查看详情</button>
+                                            </td>
+                                        </tr>
+                                        
+                                        <tr class="hover:bg-light-1 transition-colors duration-150">
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <div class="flex items-center">
+                                                    <div class="w-8 h-8 rounded-full bg-warning/10 flex items-center justify-center mr-3">
+                                                        <i class="fa fa-rust text-warning"></i>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-sm font-medium text-dark">腐蚀</div>
+                                                        <div class="text-xs text-dark-3">面积: 4.5cm²</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-007 / 1.5km</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">中</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 09:42</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">待处理</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                                <button>查看详情</button>
+                                            </td>
+                                        </tr>
+                                        
+                                        <tr class="hover:bg-light-1 transition-colors duration-150">
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <div class="flex items-center">
+                                                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-3">
+                                                        <i class="fa fa-bend text-primary"></i>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-sm font-medium text-dark">变形</div>
+                                                        <div class="text-xs text-dark-3">角度: 15°</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-007 / 1.8km</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">低</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 10:15</td>
+                                            <td class="px-4 py-4 whitespace-nowrap">
+                                                <span class="px-2 py-1 text-xs font-medium bg-success/10 text-success rounded-full">已记录</span>
+                                            </td>
+                                            <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                                <button>查看详情</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧区域 -->
+                    <div class="space-y-6">
+                        <!-- 机器人状态 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <h3 class="text-lg font-semibold text-dark mb-4">机器人状态</h3>
+                            
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <p class="text-dark-3 text-xs">当前速度</p>
+                                    <p id="statusSpeedDisplay" class="text-xl font-bold text-dark mt-1">15 m/min</p>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                   <p class="text-dark-3 text-xs">工作温度</p>
+                                   <p id="temperatureDisplay" class="text-xl font-bold text-dark mt-1">28°C</p>
+
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <p class="text-dark-3 text-xs">湿度</p>
+                                    <p class="text-xl font-bold text-dark mt-1">65%</p>
+                                </div>
+                                
+                                <div class="bg-light-1 rounded-lg p-4">
+                                    <p class="text-dark-3 text-xs">信号强度</p>
+                                    <p class="text-xl font-bold text-dark mt-1">65%</p>
+                                </div>
+                            </div>
+                            
+                            <div class="h-48">
+                                <canvas id="statusChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- 控制面板 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <h3 class="text-lg font-semibold text-dark mb-4">任务控制</h3>
+                            
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <button class="flex flex-col items-center justify-center p-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-200" id="startMissionBtn">
+                                    <i class="fa fa-play-circle text-2xl mb-2"></i>
+                                    <span class="text-sm font-medium">开始巡检</span>
+                                </button>
+                                <script>
+                                // 获取按钮元素
+                                const startMissionBtn = document.getElementById('startMissionBtn');
+
+                                // 点击事件：仅发送数据1
+                                startMissionBtn.addEventListener('click', async () => {
+                                    // 要发送的数据：仅1
+                                    const dataToSend = {action:"start"};
+
+                                    try {
+                                        // 禁用按钮并显示加载状态
+                                        startMissionBtn.disabled = true;
+                                        startMissionBtn.innerHTML = `
+                                            <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送中...</span>
+                                        `;
+
+                                        // 发送到中间服务（替换为你的服务地址）
+                                        const response = await fetch('http://localhost:3000/udp-send', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify(dataToSend)
+                                        });
+
+                                        // 处理结果
+                                        if (response.ok) {
+                                            startMissionBtn.innerHTML = `
+                                                <i class="fa fa-check-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">已发送</span>
+                                            `;
+                                        } else {
+                                            throw new Error('发送失败');
+                                        }
+                                    } catch (error) {
+                                        console.error('错误:', error);
+                                        startMissionBtn.innerHTML = `
+                                            <i class="fa fa-exclamation-circle text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送失败</span>
+                                        `;
+                                    } finally {
+                                        // 2秒后恢复初始状态
+                                        setTimeout(() => {
+                                            startMissionBtn.innerHTML = `
+                                                <i class="fa fa-play-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">开始巡检</span>
+                                            `;
+                                            startMissionBtn.disabled = false;
+                                        }, 2000);
+                                    }
+                                });
+                                </script>
+                                
+                                <button class="flex flex-col items-center justify-center p-4 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="pauseMissionBtn">
+                                    <i class="fa fa-pause-circle text-2xl mb-2"></i>
+                                    <span class="text-sm font-medium">暂停</span>
+                                </button>
+                                <script>
+                                // 获取按钮元素
+                                const pauseMissionBtn = document.getElementById('pauseMissionBtn');
+
+                                // 点击事件：仅发送数据1
+                                pauseMissionBtn.addEventListener('click', async () => {
+                                    // 要发送的数据：仅1
+                                    const dataToSend = {action:"pause"};
+
+                                    try {
+                                        // 禁用按钮并显示加载状态
+                                        pauseMissionBtn.disabled = true;
+                                        pauseMissionBtn.innerHTML = `
+                                            <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送中...</span>
+                                        `;
+
+                                        // 发送到中间服务（替换为你的服务地址）
+                                        const response = await fetch('http://localhost:3000/udp-send', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify(dataToSend) // 直接发送1
+                                        });
+
+                                        // 处理结果
+                                        if (response.ok) {
+                                            pauseMissionBtn.innerHTML = `
+                                                <i class="fa fa-check-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">已发送</span>
+                                            `;
+                                        } else {
+                                            throw new Error('发送失败');
+                                        }
+                                    } catch (error) {
+                                        console.error('错误:', error);
+                                        pauseMissionBtn.innerHTML = `
+                                            <i class="fa fa-exclamation-circle text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送失败</span>
+                                        `;
+                                    } finally {
+                                        // 2秒后恢复初始状态
+                                        setTimeout(() => {
+                                            pauseMissionBtn.innerHTML = `
+                                                <i class="fa fa-pause-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">暂停</span>
+                                            `;
+                                            pauseMissionBtn.disabled = false;
+                                        }, 2000);
+                                    }
+                                });
+                                </script>
+                                
+                                <button class="flex flex-col items-center justify-center p-4 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="stopMissionBtn">
+                                    <i class="fa fa-stop-circle text-2xl mb-2"></i>
+                                    <span class="text-sm font-medium">停止</span>
+                                </button>
+                                <script>
+                                // 获取按钮元素
+                                const stopMissionBtn = document.getElementById('stopMissionBtn');
+
+                                // 点击事件：仅发送数据1
+                                stopMissionBtn.addEventListener('click', async () => {
+                                    // 要发送的数据：仅1
+                                    const dataToSend = {action:"stop"};
+
+                                    try {
+                                        // 禁用按钮并显示加载状态
+                                        stopMissionBtn.disabled = true;
+                                        stopMissionBtn.innerHTML = `
+                                            <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送中...</span>
+                                        `;
+
+                                        // 发送到中间服务（替换为你的服务地址）
+                                        const response = await fetch('http://localhost:3000/udp-send', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify(dataToSend) // 直接发送stop指令
+                                        });
+
+                                        // 处理结果
+                                        if (response.ok) {
+                                            stopMissionBtn.innerHTML = `
+                                                <i class="fa fa-check-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">已发送</span>
+                                            `;
+                                        } else {
+                                            throw new Error('发送失败');
+                                        }
+                                    } catch (error) {
+                                        console.error('错误:', error);
+                                        stopMissionBtn.innerHTML = `
+                                            <i class="fa fa-exclamation-circle text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送失败</span>
+                                        `;
+                                    } finally {
+                                        // 2秒后恢复初始状态
+                                        setTimeout(() => {
+                                            stopMissionBtn.innerHTML = `
+                                                <i class="fa fa-stop-circle text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">停止</span>
+                                            `;
+                                            stopMissionBtn.disabled = false;
+                                        }, 2000);
+                                    }
+                                });
+                                </script>
+                                
+                                <button class="flex flex-col items-center justify-center p-4 bg-light-1 text-dark-2 rounded-lg hover:bg-light-2 transition-colors duration-200" id="returnBtn">
+                                    <i class="fa fa-home text-2xl mb-2"></i>
+                                    <span class="text-sm font-medium">返回基地</span>
+                                </button>
+
+                                 <script>
+                                // 获取按钮元素
+                                const returnMissionBtn = document.getElementById('returnBtn');
+
+                                // 点击事件：仅发送数据1
+                                returnMissionBtn.addEventListener('click', async () => {
+                                    // 要发送的数据：仅1
+                                    const dataToSend = {action:"return"};
+
+                                    try {
+                                        // 禁用按钮并显示加载状态
+                                        returnMissionBtn.disabled = true;
+                                        returnMissionBtn.innerHTML = `
+                                            <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送中...</span>
+                                        `;
+
+                                        // 发送到中间服务（替换为你的服务地址）
+                                        const response = await fetch('http://localhost:3000/udp-send', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify(dataToSend) // 直接发送stop指令
+                                        });
+
+                                        // 处理结果
+                                        if (response.ok) {
+                                            returnMissionBtn.innerHTML = `
+                                                <i class="fa fa-home text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">已发送</span>
+                                            `;
+                                        } else {
+                                            throw new Error('发送失败');
+                                        }
+                                    } catch (error) {
+                                        console.error('错误:', error);
+                                        returnMissionBtn.innerHTML = `
+                                            <i class="fa fa-exclamation-circle text-2xl mb-2"></i>
+                                            <span class="text-sm font-medium">发送失败</span>
+                                        `;
+                                    } finally {
+                                        // 2秒后恢复初始状态
+                                        setTimeout(() => {
+                                            returnMissionBtn.innerHTML = `
+                                                <i class="fa fa-home text-2xl mb-2"></i>
+                                                <span class="text-sm font-medium">返回基地</span>
+                                            `;
+                                            returnMissionBtn.disabled = false;
+                                        }, 2000);
+                                    }
+                                });
+                                </script>
+                            </div>
+                            
+                            <!-- 自动模式 -->
+                            <div class="mb-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-sm font-medium text-dark-2">自动模式</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" checked class="sr-only peer" id="autoMode">
+                                        <div class="w-9 h-5 bg-light-2 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                    </label>
+                                </div>
+                                <div class="text-xs text-dark-3 mt-1">
+                                    自动模式下，机器人将按照预设路径巡检并自动识别缺陷
+                                </div>
+                            </div>
+                            
+                            <!-- 任务选择 -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-dark-2 mb-2">选择任务</label>
+                                <select class="w-full text-sm border border-light-2 rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+                                    <option>常规巡检任务</option>
+                                    <option>重点区域复查</option>
+                                    <option>管道泄漏检测</option>
+                                    <option>自定义路径</option>
+                                </select>
+                            </div>
+                            
+                            <button class="w-full py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-200">
+                                发送指令
+                            </button>
+                        </div>
+                        
+                        <!-- 管道地图 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <h3 class="text-lg font-semibold text-dark mb-4">管道地图</h3>
+                            
+                            <div class="relative h-64 bg-light-1 rounded-lg overflow-hidden">
+                                <img src="https://picsum.photos/id/1029/400/300" alt="管道系统地图" class="w-full h-full object-cover">
+                                
+                                <!-- 位置标记 -->
+                                <div class="absolute top-1/2 left-1/4 transform -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-primary rounded-full animate-pulse"></div>
+                                
+                                <!-- 图例 -->
+                                <div class="absolute bottom-3 left-3 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="flex items-center">
+                                            <div class="w-3 h-3 bg-primary rounded-full mr-2"></div>
+                                            <span class="text-xs text-dark">当前位置</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <div class="w-3 h-3 bg-danger rounded-full mr-2"></div>
+                                            <span class="text-xs text-dark">缺陷位置</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-dark-2">管道总长度</span>
+                                    <span class="font-medium text-dark">5.7 km</span>
+                                </div>
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-dark-2">已巡检长度</span>
+                                    <span class="font-medium text-dark">1.2 km</span>
+                                </div>
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-dark-2">剩余长度</span>
+                                    <span class="font-medium text-dark">4.5 km</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 实时数据 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <h3 class="text-lg font-semibold text-dark mb-4">实时数据</h3>
+                            
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">温度</span>
+                                    <span class="text-sm font-medium text-dark">28.5°C</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">湿度</span>
+                                    <span class="text-sm font-medium text-dark">65.2%</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">压力</span>
+                                    <span class="text-sm font-medium text-dark">2.3 MPa</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">氧气含量</span>
+                                    <span class="text-sm font-medium text-dark">20.9%</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">甲烷含量</span>
+                                    <span class="text-sm font-medium text-dark">0.02%</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-dark-2">CO含量</span>
+                                    <span class="text-sm font-medium text-dark">0.001%</span>
+                                </div>
+                            </div>
+                            
+                            <button class="w-full mt-4 py-2 text-sm text-primary hover:text-primary/80 transition-colors duration-200">
+                                查看完整数据记录
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 历史记录视图 -->
+            <div class="view-content hidden" id="history-view">
+                <!-- 页面标题 -->
+                <div class="mb-6">
+                    <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-dark">历史记录</h2>
+                    <p class="text-dark-3 mt-1">查看和管理管道机器人的历史巡检记录</p>
+                </div>
+                
+                <!-- 筛选和搜索 -->
+                <div class="bg-white rounded-xl p-5 card-shadow mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-2 mb-2">日期范围</label>
+                            <div class="flex space-x-2">
+                                <input type="date" class="flex-1 text-sm border border-light-2 rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+                                <span class="flex items-center text-dark-3">至</span>
+                                <input type="date" class="flex-1 text-sm border border-light-2 rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-dark-2 mb-2">管道编号</label>
+                            <select class="w-full text-sm border border-light-2 rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+                                <option value="">所有管道</option>
+                                <option value="PIPE-001">PIPE-001</option>
+                                <option value="PIPE-002">PIPE-002</option>
+                                <option value="PIPE-003">PIPE-003</option>
+                                <option value="PIPE-007">PIPE-007</option>
+                                <option value="PIPE-010">PIPE-010</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-dark-2 mb-2">搜索记录</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fa fa-search text-dark-3"></i>
+                                </div>
+                                <input type="text" class="bg-light-1 border border-light-2 text-dark text-sm rounded-lg focus:ring-primary focus:border-primary block w-full pl-10 p-2.5" placeholder="搜索任务名称或缺陷类型...">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex justify-end">
+                        <button class="px-4 py-2 mr-2 text-sm font-medium rounded-lg bg-light-1 text-dark-2 hover:bg-light-2 transition-colors duration-200">
+                            重置筛选
+                        </button>
+                        <button class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors duration-200">
+                            应用筛选
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 历史任务记录 -->
+                <div class="bg-white rounded-xl p-5 card-shadow mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-dark">历史巡检任务</h3>
+                        <button class="text-sm text-primary hover:text-primary/80 transition-colors duration-200">
+                            导出记录 <i class="fa fa-download ml-1"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-light-2">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tl-lg">任务名称</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">管道编号</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">开始时间</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">结束时间</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">巡检长度</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">发现缺陷</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tr-lg">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-light-2">
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-dark">日常巡检任务 #124</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-007</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 08:30</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 11:45</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">1.2 km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-danger/10 text-danger rounded-full">7处</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                        <button class="text-primary hover:text-primary/80 mr-3">查看详情</button>
+                                        <button class="text-dark-3 hover:text-dark">下载报告</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-dark">重点区域复查 #123</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-003</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-20 14:15</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-20 16:30</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">0.8 km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">2处</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                        <button class="text-primary hover:text-primary/80 mr-3">查看详情</button>
+                                        <button class="text-dark-3 hover:text-dark">下载报告</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-dark">日常巡检任务 #122</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-001</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-19 09:00</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-19 12:15</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">1.5 km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">4处</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                        <button class="text-primary hover:text-primary/80 mr-3">查看详情</button>
+                                        <button class="text-dark-3 hover:text-dark">下载报告</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-dark">管道泄漏检测 #121</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-010</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-18 13:45</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-18 15:30</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">0.5 km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-success/10 text-success rounded-full">0处</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                        <button class="text-primary hover:text-primary/80 mr-3">查看详情</button>
+                                        <button class="text-dark-3 hover:text-dark">下载报告</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-dark">日常巡检任务 #120</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-002</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-17 08:30</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-17 11:00</td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">1.0 km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">3处</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm">
+                                        <button class="text-primary hover:text-primary/80 mr-3">查看详情</button>
+                                        <button class="text-dark-3 hover:text-dark">下载报告</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 分页 -->
+                    <div class="flex items-center justify-between mt-4">
+                        <div class="text-sm text-dark-3">
+                            显示 1 到 5 条，共 24 条记录
+                        </div>
+                        <div class="flex space-x-1">
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2 disabled:opacity-50" disabled>
+                                <i class="fa fa-chevron-left text-xs"></i>
+                            </button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-white">1</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">2</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">3</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">4</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">5</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">
+                                <i class="fa fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 历史缺陷记录 -->
+                <div class="bg-white rounded-xl p-5 card-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-dark">历史缺陷记录</h3>
+                        <div class="flex space-x-2">
+                            <select class="text-sm border border-light-2 rounded-lg px-3 py-1.5 focus:ring-primary focus:border-primary">
+                                <option>所有缺陷类型</option>
+                                <option>裂缝</option>
+                                <option>腐蚀</option>
+                                <option>变形</option>
+                                <option>堵塞</option>
+                            </select>
+                            <button class="text-sm text-primary hover:text-primary/80 transition-colors duration-200">
+                                导出记录 <i class="fa fa-download ml-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-light-2">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tl-lg">缺陷类型</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">位置</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">严重程度</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">发现时间</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider">处理状态</th>
+                                    <th class="px-4 py-3 bg-light-1 text-left text-xs font-medium text-dark-3 uppercase tracking-wider rounded-tr-lg">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-light-2">
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="w-8 h-8 rounded-full bg-danger/10 flex items-center justify-center mr-3">
+                                                <i class="fa fa-crack text-danger"></i>
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-dark">裂缝</div>
+                                                <div class="text-xs text-dark-3">直径: 3.2cm</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-007 / 1.2km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-danger/10 text-danger rounded-full">高</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-21 09:35</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">待处理</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                        <button>查看详情</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="w-8 h-8 rounded-full bg-warning/10 flex items-center justify-center mr-3">
+                                                <i class="fa fa-rust text-warning"></i>
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-dark">腐蚀</div>
+                                                <div class="text-xs text-dark-3">面积: 4.5cm²</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-003 / 0.5km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-warning/10 text-warning rounded-full">中</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-20 15:10</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-success/10 text-success rounded-full">已修复</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                        <button>查看详情</button>
+                                    </td>
+                                </tr>
+                                
+                                <tr class="hover:bg-light-1 transition-colors duration-150">
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-3">
+                                                <i class="fa fa-bend text-primary"></i>
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-dark">变形</div>
+                                                <div class="text-xs text-dark-3">角度: 15°</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">PIPE-001 / 0.8km</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">低</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-dark-2">2025-07-19 10:45</td>
+                                    <td class="px-4 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 text-xs font-medium bg-success/10 text-success rounded-full">已记录</span>
+                                    </td>
+                                    <td class="px-4 py-4 whitespace-nowrap text-sm text-primary hover:text-primary/80">
+                                        <button>查看详情</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- 分页 -->
+                    <div class="flex items-center justify-between mt-4">
+                        <div class="text-sm text-dark-3">
+                            显示 1 到 3 条，共 16 条记录
+                        </div>
+                        <div class="flex space-x-1">
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2 disabled:opacity-50" disabled>
+                                <i class="fa fa-chevron-left text-xs"></i>
+                            </button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-white">1</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">2</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">3</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">4</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">5</button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-lg bg-light-1 text-dark-3 hover:bg-light-2">
+                                <i class="fa fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 主内容区原有代码（dashboard-view、history-view等） -->
+
+            <!-- 新增：路径成像视图 -->
+            <div class="view-content hidden" id="path-view">
+                <!-- 页面标题 -->
+                <div class="mb-6">
+                    <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-dark">路径成像与AI分析</h2>
+                    <p class="text-dark-3 mt-1">查看SLAM构建的管道二维地图，并与AI助手交互分析数据</p>
+                </div>
+
+                <!-- 核心内容：SLAM地图 + AI对话框 布局 -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 左侧：SLAM二维地图区域（占2/3宽度） -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- SLAM地图容器 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">SLAM 管道二维地图</h3>
+                                <div class="flex space-x-2">
+                                    <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-light-1 text-dark-2 hover:bg-light-2 transition-colors duration-200" id="refreshSlamMap">
+                                        <i class="fa fa-refresh mr-1"></i>刷新地图
+                                    </button>
+                                    <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors duration-200" id="exportSlamMap">
+                                        <i class="fa fa-download mr-1"></i>导出地图
+                                    </button>
+                                    <button class="px-3 py-1.5 text-xs font-medium rounded-lg bg-light-1 text-dark-2 hover:bg-light-2 transition-colors duration-200" id="toggleSlamLayers">
+                                        <i class="fa fa-layer-group mr-1"></i>图层控制
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- SLAM地图显示区（可后续对接SLAM数据接口） -->
+                           <div class="relative w-full h-[500px] bg-light-1 rounded-lg overflow-hidden border border-light-2">
+
+                                <!-- SLAM地图容器（修复后：默认显示，不再隐藏） -->
+                                <div id="slamMapContainer" class="absolute inset-0"> <!-- 关键：删除 class="hidden" -->
+                                    <!-- 本地视频（确保路径正确） -->
+                                   <video id="slamVideo"
+                                        src="./slamvideo.mp4"
+                                        class="w-full h-full object-contain"
+                                        controls muted loop playsinline preload="auto">
+                                    您的浏览器不支持视频播放
+                                    </video>
+
+                                    <!-- 新增：手动播放按钮（放在视频容器下方） -->
+                                    <button id="manualPlayBtn" class="mt-2 px-4 py-2 bg-primary text-white rounded-lg">
+                                        手动播放视频
+                                    </button>
+                                    
+                                    
+
+                                    <!-- 地图图例 -->
+                                    
+                                </div>
+                            </div>
+
+                            <!-- SLAM地图状态信息 -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                                <div class="bg-light-1 rounded-lg p-3">
+                                    <p class="text-dark-3 text-xs">地图构建进度</p>
+                                    <p class="text-lg font-bold text-dark mt-1">87%</p>
+                                    <div class="w-full bg-light-2 rounded-full h-1.5 mt-1">
+                                        <div class="bg-primary h-1.5 rounded-full" style="width: 87%"></div>
+                                    </div>
+                                </div>
+                                <div class="bg-light-1 rounded-lg p-3">
+                                    <p class="text-dark-3 text-xs">已建模管道长度</p>
+                                    <p class="text-lg font-bold text-dark mt-1">4.9 km</p>
+                                </div>
+                                <div class="bg-light-1 rounded-lg p-3">
+                                    <p class="text-dark-3 text-xs">定位精度</p>
+                                    <p class="text-lg font-bold text-dark mt-1">±2 cm</p>
+                                </div>
+                                <div class="bg-light-1 rounded-lg p-3">
+                                    <p class="text-dark-3 text-xs">最后更新时间</p>
+                                    <p class="text-lg font-bold text-dark mt-1" id="slamLastUpdate">2025-09-17 11:32</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 地图分析报告 -->
+                        <div class="bg-white rounded-xl p-5 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">SLAM地图分析报告</h3>
+                                <button class="text-sm text-primary hover:text-primary/80 transition-colors duration-200">
+                                    查看完整报告 <i class="fa fa-arrow-right ml-1"></i>
+                                </button>
+                            </div>
+                            <div class="space-y-3 text-sm">
+                                <p class="text-dark">1. 管道整体走向：<span class="text-dark-2">东西向为主，局部有3处90°转弯（坐标：X123.4/Y56.7、X123.8/Y57.2、X124.1/Y56.9）</span></p>
+                                <p class="text-dark">2. 异常区域：<span class="text-dark-2">共检测到7处管道变形，其中2处（X123.6/Y56.8、X124.0/Y57.0）变形量超过阈值（>5°），需重点关注</span></p>
+                                <p class="text-dark">3. 未建模区域：<span class="text-dark-2">剩余13%区域未完成建模（主要集中在管道西段，可能因信号遮挡导致），建议调整机器人路径后重新扫描</span></p>
+                                <p class="text-dark">4. 定位稳定性：<span class="text-dark-2">近1小时内定位漂移量≤1cm，符合精度要求</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：AI交互对话框（占1/3宽度） -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl p-5 card-shadow flex flex-col" style="height: 700px;">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-semibold text-dark">AI 分析助手</h3>
+                                <div class="flex items-center space-x-2">
+                                    <span id="aiStatus" class="flex items-center text-xs font-medium bg-success/10 text-success px-2 py-1 rounded-full">
+                                        <span class="w-2 h-2 bg-success rounded-full mr-1 animate-pulse"></span>
+                                        在线
+                                    </span>
+                                    <button class="text-dark-3 hover:text-primary" title="清除对话">
+                                        <i class="fa fa-trash-o"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- AI对话历史区域 -->
+                            <div id="aiChatHistory" class="flex-1 overflow-y-auto space-y-4 p-2 mb-4 max-h-[calc(100%-120px)]">
+                                <!-- 示例对话：AI欢迎语 -->
+                                <div class="flex items-start">
+                                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mr-3">
+                                        <i class="fa fa-robot text-primary"></i>
+                                    </div>
+                                    <div class="bg-light-1 rounded-lg rounded-tl-none px-4 py-3 max-w-[80%]">
+                                        <p class="text-sm text-dark">您好！我是管道分析AI助手，可为您提供SLAM地图解读、缺陷分析、巡检建议等服务。请问有什么可以帮助您的？</p>
+                                        <p class="text-xs text-dark-3 mt-1">11:30</p>
+                                    </div>
+                                </div>
+
+                                <!-- 示例对话：用户提问（后续由用户输入动态添加） -->
+                                <div class="flex items-start justify-end">
+                                    <div class="bg-primary/10 rounded-lg rounded-tr-none px-4 py-3 max-w-[80%]">
+                                        <p class="text-sm text-dark">请分析当前SLAM地图中高风险缺陷的分布情况</p>
+                                        <p class="text-xs text-dark-3 mt-1 text-right">11:32</p>
+                                    </div>
+                                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 ml-3">
+                                        <i class="fa fa-user text-white"></i>
+                                    </div>
+                                </div>
+
+                                <!-- 示例对话：AI回答（后续由AI接口动态返回） -->
+                                <div class="flex items-start">
+                                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mr-3">
+                                        <i class="fa fa-robot text-primary"></i>
+                                    </div>
+                                    <div class="bg-light-1 rounded-lg rounded-tl-none px-4 py-3 max-w-[80%]">
+                                        <p class="text-sm text-dark">根据SLAM地图分析，当前存在2处高风险缺陷，分布如下：</p>
+                                        <p class="text-sm text-dark mt-1">1. 位置：X123.6/Y56.8（管道PIPE-007，1.2km处），缺陷类型：裂缝（直径3.2cm），风险等级：高（可能导致泄漏）；</p>
+                                        <p class="text-sm text-dark mt-1">2. 位置：X124.0/Y57.0（管道PIPE-007，1.5km处），缺陷类型：腐蚀（面积4.5cm²），风险等级：高（腐蚀深度已达管道壁厚的40%）。</p>
+                                        <p class="text-sm text-dark mt-1">建议优先安排这两处缺陷的修复工作，并在修复后重新扫描验证。</p>
+                                        <p class="text-xs text-dark-3 mt-1">11:33</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- AI对话输入区域 -->
+                            <div class="border-t border-light-2 pt-4">
+                                <!-- 关键：给表单添加明确的 ID，确保 JS 能精准选中 -->
+                                <form id="aiChatForm" class="flex space-x-2" onsubmit="return false;"> <!-- 先通过 HTML 阻止默认提交 -->
+                                    <input 
+                                        type="text" 
+                                        id="aiChatInput" 
+                                        class="flex-1 bg-light-1 border border-light-2 text-dark text-sm rounded-lg focus:ring-primary focus:border-primary block px-4 py-2.5" 
+                                        placeholder="输入问题（例如：分析地图中的异常区域、解释缺陷风险等级...）"
+                                    >
+                                    <!-- 关键：给按钮添加 type="submit"，并绑定点击事件（双重保险） -->
+                                    <button 
+                                        type="submit" 
+                                        id="aiChatSendBtn"
+                                        class="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors duration-200"
+                                    >
+                                        <i class="fa fa-paper-plane"></i>
+                                    </button>
+                                </form>
+                                <div class="flex flex-wrap gap-2 mt-3">
+                                    <button class="text-xs bg-light-1 text-dark-2 px-3 py-1 rounded-full hover:bg-light-2 transition-colors duration-200 aiQuickQuestion">
+                                        分析缺陷分布
+                                    </button>
+                                    <button class="text-xs bg-light-1 text-dark-2 px-3 py-1 rounded-full hover:bg-light-2 transition-colors duration-200 aiQuickQuestion">
+                                        未建模区域原因
+                                    </button>
+                                    <button class="text-xs bg-light-1 text-dark-2 px-3 py-1 rounded-full hover:bg-light-2 transition-colors duration-200 aiQuickQuestion">
+                                        优化巡检路径
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 页脚 -->
+        <footer class="bg-white py-4 px-6 border-t border-light-2">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="text-sm text-dark-3 mb-2 md:mb-0">
+                    © 2025 管道机器人监控系统 - 版本 2.3.1
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-dark-3 hover:text-primary text-sm transition-colors duration-200">帮助中心</a>
+                    <a href="#" class="text-dark-3 hover:text-primary text-sm transition-colors duration-200">使用文档</a>
+                    <a href="#" class="text-dark-3 hover:text-primary text-sm transition-colors duration-200">关于我们</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+    
+    <script>
+    // 1) 与服务器建立连接（和你的 server.js 配套）
+    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+
+    // 可选：显示服务端透传的 UDP 端口和提示（server.js 有发 'port-info'）
+    socket.on('port-info', ({ udpPort, message }) => {
+        console.log('UDP port:', udpPort, message);
+    });
+
+    // 2) 接收 JPEG 帧并显示到 <img id="liveImage">
+    const imgEl = document.getElementById('liveImage');
+    let rendering = false; // 简易丢帧保护，避免 decode 堆积导致卡顿
+    socket.on('video-jpeg', (b64) => {
+        if (!imgEl) return;
+        if (rendering) return;
+        rendering = true;
+        imgEl.src = 'data:image/jpeg;base64,' + b64;
+        // 等图片解码完成，再允许下一帧
+        imgEl.decode?.().catch(() => {}).finally(() => { rendering = false; });
+    });
+
+    socket.on('connect', () => console.log('✅ 已连上 Socket.IO'));
+    socket.on('disconnect', () => console.log('❌ 断开 Socket.IO'));
+    </script>
+
+
+    <!-- 侧边栏和视图切换脚本 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+
+            const slamVideo = document.getElementById('slamVideo');
+            const manualPlayBtn = document.getElementById('manualPlayBtn');
+
+            // 手动播放按钮点击事件
+            if (manualPlayBtn && slamVideo) {
+                manualPlayBtn.addEventListener('click', async function() {
+                    // 避免在播放/暂停过程中重复点击
+                    if (slamVideo.readyState < 2) return; // 视频未加载完成时不执行
+                    
+                    if (slamVideo.paused) {
+                        try {
+                            await slamVideo.play(); // 等待播放操作完成
+                            this.textContent = '暂停视频';
+                        } catch (err) {
+                            console.error('SLAM视频播放失败：', err.message);
+                            this.textContent = '手动播放视频'; // 失败后重置按钮文本
+                        }
+                    } else {
+                        slamVideo.pause();
+                        this.textContent = '手动播放视频';
+                    }
+                });
+            }
+
+            // 额外：监听视频加载错误，控制台提示
+            if (slamVideo) {
+                slamVideo.addEventListener('error', function() {
+                    console.error('视频加载错误：', {
+                        错误代码: this.error.code,
+                        错误信息: this.error.message,
+                        视频路径: this.src
+                    });
+                });
+            }
+            // 侧边栏切换
+            const sidebar = document.getElementById('sidebar');
+            const openSidebar = document.getElementById('openSidebar');
+            const closeSidebar = document.getElementById('closeSidebar');
+            
+            openSidebar.addEventListener('click', function() {
+                sidebar.classList.remove('-translate-x-full');
+            });
+            
+            closeSidebar.addEventListener('click', function() {
+                sidebar.classList.add('-translate-x-full');
+            });
+            
+            // 视图切换功能
+            const navLinks = document.querySelectorAll('.nav-link');
+            const viewContents = document.querySelectorAll('.view-content');
+            
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // 移除所有导航项的活跃状态
+                    navLinks.forEach(l => {
+                        l.classList.remove('bg-primary/10', 'text-primary');
+                        l.classList.add('text-dark-2', 'hover:bg-light-1', 'hover:text-primary');
+                    });
+                    
+                    // 设置当前导航项为活跃状态
+                    this.classList.add('bg-primary/10', 'text-primary');
+                    this.classList.remove('text-dark-2', 'hover:bg-light-1', 'hover:text-primary');
+                    
+                    // 隐藏所有视图
+                    viewContents.forEach(view => {
+                        view.classList.add('hidden');
+                    });
+                    
+                    // 显示对应的视图
+                    const targetView = this.getAttribute('data-view');
+                    document.getElementById(`${targetView}-view`).classList.remove('hidden');
+                    
+                    // 在移动设备上点击导航后关闭侧边栏
+                    if (window.innerWidth < 1024) {
+                        sidebar.classList.add('-translate-x-full');
+                    }
+                });
+            });
+            
+            // 视频播放/暂停切换
+            const videoPlayPauseBtn = document.getElementById('videoPlayPauseBtn');
+            const playPauseVideo = document.getElementById('playPauseVideo');
+            
+            function togglePlayPause() {
+                const isPlaying = videoPlayPauseBtn.innerHTML.includes('pause');
+                if (isPlaying) {
+                    videoPlayPauseBtn.innerHTML = '<i class="fa fa-play"></i>';
+                    // 仅控制“实时视频监控”的视频（需给实时视频标签加ID：liveVideo）
+                    const liveVideo = document.getElementById('liveVideo');
+                    if (liveVideo) liveVideo.pause();
+                } else {
+                    videoPlayPauseBtn.innerHTML = '<i class="fa fa-pause"></i>';
+                    const liveVideo = document.getElementById('liveVideo');
+                    if (liveVideo) liveVideo.play().catch(err => console.error('实时视频播放失败：', err));
+                }
+            }
+            
+            if (videoPlayPauseBtn) videoPlayPauseBtn.addEventListener('click', togglePlayPause);
+            if (playPauseVideo) playPauseVideo.addEventListener('click', togglePlayPause);
+            
+            // 速度控制
+            const speedSlider = document.getElementById('speedSlider');
+            const speedDisplay = document.getElementById('speedDisplay');
+            
+            if (speedSlider && speedDisplay) {
+                speedSlider.addEventListener('input', function() {
+                    speedDisplay.textContent = `${this.value} m/min`;
+                });
+            }
+            
+            // 灯光控制
+            const lightSlider = document.getElementById('lightSlider');
+            const lightDisplay = document.getElementById('lightDisplay');
+            
+            if (lightSlider && lightDisplay) {
+                lightSlider.addEventListener('input', function() {
+                    lightDisplay.textContent = `${this.value}%`;
+                });
+            }
+            
+            // 任务控制按钮样式切换
+            const startMissionBtn = document.getElementById('startMissionBtn');
+            const pauseMissionBtn = document.getElementById('pauseMissionBtn');
+            const stopMissionBtn = document.getElementById('stopMissionBtn');
+            const returnBtn = document.getElementById('returnBtn');
+            
+            function setActiveButton(button) {
+                [startMissionBtn, pauseMissionBtn, stopMissionBtn, returnBtn].forEach(btn => {
+                    if (btn) {
+                        btn.classList.remove('bg-primary', 'text-white');
+                        btn.classList.add('bg-light-1', 'text-dark-2');
+                    }
+                });
+                if (button) {
+                    button.classList.remove('bg-light-1', 'text-dark-2');
+                    button.classList.add('bg-primary', 'text-white');
+                }
+            }
+            
+            if (startMissionBtn) startMissionBtn.addEventListener('click', function() { setActiveButton(this); });
+            if (pauseMissionBtn) pauseMissionBtn.addEventListener('click', function() { setActiveButton(this); });
+            if (stopMissionBtn) stopMissionBtn.addEventListener('click', function() { setActiveButton(this); });
+            if (returnBtn) returnBtn.addEventListener('click', function() { setActiveButton(this); });
+            
+            // 方向控制按钮
+            const forwardBtn = document.getElementById('forwardBtn');
+            const backwardBtn = document.getElementById('backwardBtn');
+            const leftBtn = document.getElementById('leftBtn');
+            const rightBtn = document.getElementById('rightBtn');
+            
+            function toggleDirectionButton(button) {
+                if (button) {
+                    button.classList.toggle('bg-primary');
+                    button.classList.toggle('text-white');
+                    button.classList.toggle('bg-light-1');
+                    button.classList.toggle('text-dark-2');
+                    
+                    // 300ms后恢复原状
+                    setTimeout(() => {
+                        button.classList.toggle('bg-primary');
+                        button.classList.toggle('text-white');
+                        button.classList.toggle('bg-light-1');
+                        button.classList.toggle('text-dark-2');
+                    }, 300);
+                }
+            }
+            
+            if (forwardBtn) forwardBtn.addEventListener('click', function() { toggleDirectionButton(this); });
+            if (backwardBtn) backwardBtn.addEventListener('click', function() { toggleDirectionButton(this); });
+            if (leftBtn) leftBtn.addEventListener('click', function() { toggleDirectionButton(this); });
+            if (rightBtn) rightBtn.addEventListener('click', function() { toggleDirectionButton(this); });
+            
+            // 紧急停止按钮效果
+            const emergencyStop = document.getElementById('emergencyStop');
+            if (emergencyStop) {
+                emergencyStop.addEventListener('click', function() {
+                    this.classList.add('animate-pulse');
+                    setTimeout(() => {
+                        this.classList.remove('animate-pulse');
+                    }, 1000);
+                });
+            }
+            
+            // 图表初始化
+            // 缺陷分析图表
+            const defectCtx = document.getElementById('defectChart');
+            if (defectCtx) {
+                new Chart(defectCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['7/15', '7/16', '7/17', '7/18', '7/19', '7/20', '7/21'],
+                        datasets: [
+                            {
+                                label: '裂缝',
+                                data: [1, 0, 2, 0, 1, 0, 3],
+                                backgroundColor: '#F53F3F',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: '腐蚀',
+                                data: [0, 1, 0, 1, 0, 1, 2],
+                                backgroundColor: '#FF7D00',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: '变形',
+                                data: [0, 0, 1, 0, 1, 0, 2],
+                                backgroundColor: '#165DFF',
+                                borderRadius: 4,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 6
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    display: true,
+                                    drawBorder: false,
+                                    color: '#F2F3F5'
+                                },
+                                ticks: {
+                                    precision: 0
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // 状态监控图表
+            const statusCtx = document.getElementById('statusChart');
+            if (statusCtx) {
+                new Chart(statusCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['10:00', '10:10', '10:20', '10:30', '10:40', '10:50', '11:00'],
+                        datasets: [
+                            {
+                                label: '速度 (m/min)',
+                                data: [15, 15, 14, 16, 15, 14, 15],
+                                borderColor: '#165DFF',
+                                backgroundColor: 'rgba(22, 93, 255, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 3,
+                                pointBackgroundColor: '#FFFFFF',
+                                pointBorderColor: '#165DFF',
+                                pointHoverRadius: 5
+                            },
+                            {
+                                label: '温度 (°C)',
+                                data: [25, 26, 27, 28, 28, 27, 28],
+                                borderColor: '#FF7D00',
+                                backgroundColor: 'rgba(255, 125, 0, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 3,
+                                pointBackgroundColor: '#FFFFFF',
+                                pointBorderColor: '#FF7D00',
+                                pointHoverRadius: 5
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 6
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: {
+                                    display: true,
+                                    drawBorder: false,
+                                    color: '#F2F3F5'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+
+    <script>
+   
+
+        socket.on('update-data', (data) => {
+        console.log("网页收到实时数据:", data);
+
+        // 更新速度
+        const speedDisplay = document.getElementById('speedDisplay');
+        if (speedDisplay) {
+            speedDisplay.textContent = `${data.speed} m/min`;
+        }
+        const statusSpeedDisplay = document.getElementById('statusSpeedDisplay');
+        if (statusSpeedDisplay) {
+            statusSpeedDisplay.textContent = `${data.speed} m/min`;
+        }
+
+        // 更新工作温度
+        const tempEl = document.getElementById('temperatureDisplay');
+        if (tempEl) {
+            tempEl.textContent = `${data.temperature}°C`;
+        }
+     });
+        
+    </script>
+
+    <script>
+                // 1. 获取所有控制按钮
+        const allControlBtns = document.querySelectorAll('.control-btn');
+
+        // 2. 给每个按钮绑定点击事件
+        allControlBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 3. 第一步：重置所有按钮为默认样式
+                allControlBtns.forEach(item => {
+                    item.classList.remove('bg-primary', 'text-white', 'hover:bg-primary/90');
+                    item.classList.add('bg-light-1', 'text-dark-2', 'hover:bg-light-2');
+                });
+
+                // 4. 第二步：给当前点击的按钮添加激活样式（变蓝）
+                this.classList.remove('bg-light-1', 'text-dark-2', 'hover:bg-light-2');
+                this.classList.add('bg-primary', 'text-white', 'hover:bg-primary/90');
+            });
+        });
+
+    </script>
+
+    <script>
+        // AI对话框发送功能实现（修复版）
+        document.addEventListener('DOMContentLoaded', function() {
+            // 1. 精准获取DOM元素（避免选中错误元素）
+            const aiChatForm = document.getElementById('aiChatForm'); // 对话表单
+            const aiChatInput = document.getElementById('aiChatInput'); // 输入框
+            const aiChatSendBtn = document.getElementById('aiChatSendBtn'); // 发送按钮
+            const aiChatHistory = document.getElementById('aiChatHistory'); // 对话历史容器
+            const aiQuickQuestions = document.querySelectorAll('.aiQuickQuestion'); // 快捷问题按钮
+
+            // 2. 生成当前时间（格式：HH:MM）
+            function getCurrentTime() {
+                const now = new Date();
+                return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            }
+
+            // 3. 添加消息到对话历史（区分用户/AI消息）
+            function addMessageToHistory(isUser, content) {
+                const time = getCurrentTime();
+                let messageHTML = '';
+
+                if (isUser) {
+                    // 用户消息（右对齐）
+                    messageHTML = `
+                        <div class="flex items-start justify-end">
+                            <div class="bg-primary/10 rounded-lg rounded-tr-none px-4 py-3 max-w-[80%]">
+                                <p class="text-sm text-dark">${content}</p>
+                                <p class="text-xs text-dark-3 mt-1 text-right">${time}</p>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 ml-3">
+                                <i class="fa fa-user text-white"></i>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // AI消息（左对齐，带加载动画）
+                    messageHTML = `
+                        <div class="flex items-start ai-message-loading">
+                            <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mr-3">
+                                <i class="fa fa-robot text-primary"></i>
+                            </div>
+                            <div class="bg-light-1 rounded-lg rounded-tl-none px-4 py-3 max-w-[80%]">
+                                <div class="flex space-x-1.5">
+                                    <div class="w-2 h-2 bg-dark-3 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                                    <div class="w-2 h-2 bg-dark-3 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                                    <div class="w-2 h-2 bg-dark-3 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                                </div>
+                                <p class="text-xs text-dark-3 mt-1">${time}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // 添加到历史并滚动到底部
+                aiChatHistory.insertAdjacentHTML('beforeend', messageHTML);
+                aiChatHistory.scrollTop = aiChatHistory.scrollHeight;
+
+                // 如果是AI消息，返回加载中的元素（后续替换为真实内容）
+                if (!isUser) {
+                    return aiChatHistory.lastElementChild;
+                }
+                return null;
+            }
+
+            // 调后端 /api/chat，返回 AI 文本
+            async function callDeepSeekAPI(userText, onDelta) {
+            const resp = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                messages: [
+                    { role: 'system', content: '你是一个专业的管道机器人分析助手...' },
+                    { role: 'user', content: userText }
+                ]
+                })
+            });
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+
+                // DeepSeek 的流格式是 event-stream，需要逐行解析
+                const lines = chunk.split('\n').filter(l => l.trim() !== '');
+                for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') return;
+                    try {
+                    const parsed = JSON.parse(data);
+                    const delta = parsed.choices?.[0]?.delta?.content;
+                    if (delta) onDelta(delta);  // 把每个增量传给 UI
+                    } catch {}
+                }
+                }
+            }
+            }
+
+            // 5. 处理表单提交（核心修复：双重阻断默认行为 + 阻止事件冒泡）
+           function handleSendMessage(e) {
+            // 阻断事件冒泡 + 默认提交
+            e.stopPropagation();
+            e.preventDefault();
+
+            const userMessage = aiChatInput.value.trim();
+            if (!userMessage) return;
+
+            // 1) 先渲染“用户消息”
+            addMessageToHistory(true, userMessage);
+
+            // 2) 清空输入框
+            aiChatInput.value = '';
+
+            // 3) 插入“AI思考中”占位，并准备流式接收
+            const loadingElement = addMessageToHistory(false, ''); // 一个独立的占位节点
+            let buffer = '';
+            let pEl = null;          // 本次消息要写入的 <p> 标签引用
+            let containerEl = null;  // 本次消息外层容器引用
+            let firstPainted = false;
+
+            // 简单转义
+            const escapeHTML = (s) =>
+                s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            // 4) 开始流式
+            callDeepSeekAPI(userMessage, (delta) => {
+                buffer += delta;
+
+                if (!firstPainted) {
+                // 第一次有内容：用真实的 AI 气泡替换 “loading气泡”
+                const time = getCurrentTime();
+
+                // 构建新的 DOM 结构（不使用任何 id，避免冲突）
+                const wrapper = document.createElement('div');
+                wrapper.className = 'flex items-start';
+                wrapper.innerHTML = `
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mr-3">
+                    <i class="fa fa-robot text-primary"></i>
+                    </div>
+                    <div class="bg-light-1 rounded-lg rounded-tl-none px-4 py-3 max-w-[80%]">
+                    <p class="text-sm text-dark ai-streaming-text"></p>
+                    <p class="text-xs text-dark-3 mt-1">${time}</p>
+                    </div>
+                `;
+
+                // 用新节点替换占位
+                loadingElement.replaceWith(wrapper);
+
+                containerEl = wrapper;
+                pEl = wrapper.querySelector('.ai-streaming-text');
+                firstPainted = true;
+                }
+
+                if (pEl) {
+                pEl.innerHTML = escapeHTML(buffer);
+                aiChatHistory.scrollTop = aiChatHistory.scrollHeight;
+                }
+            })
+            .catch(err => {
+                const time = getCurrentTime();
+
+                if (!firstPainted) {
+                // 占位还没被替换：直接替换成错误 UI
+                const errorWrapper = document.createElement('div');
+                errorWrapper.className = 'flex items-start';
+                errorWrapper.innerHTML = `
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mr-3">
+                    <i class="fa fa-robot text-primary"></i>
+                    </div>
+                    <div class="bg-light-1 rounded-lg rounded-tl-none px-4 py-3 max-w-[80%]">
+                    <p class="text-sm text-danger">抱歉，AI 服务暂时不可用：${(err && err.message) ? err.message : '未知错误'}</p>
+                    <p class="text-xs text-dark-3 mt-1">${time}</p>
+                    </div>
+                `;
+                loadingElement.replaceWith(errorWrapper);
+                } else if (pEl) {
+                // 已经有容器：把文本改为错误内容
+                pEl.innerHTML = `抱歉，AI 服务暂时不可用：${
+                    (err && err.message) ? escapeHTML(err.message) : '未知错误'
+                }`;
+                }
+
+                aiChatHistory.scrollTop = aiChatHistory.scrollHeight;
+                console.error('AI 调用失败：', err);
+            });
+            }
+
+
+            // 给表单绑定提交事件（支持“回车键”提交）
+            if (aiChatForm) {
+                aiChatForm.addEventListener('submit', handleSendMessage);
+            }
+
+            // 给发送按钮单独绑定点击事件（支持“点击按钮”提交）
+            if (aiChatSendBtn) {
+                aiChatSendBtn.addEventListener('click', function(e) {
+                    handleSendMessage(e);
+                });
+            }
+
+            // 6. 处理快捷问题按钮（点击直接发送预设问题，同样阻断冒泡）
+            aiQuickQuestions.forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const quickQuestion = this.textContent.trim();
+                // 复用同一条提交流程：把问题塞进输入框，直接触发 submit
+                aiChatInput.value = quickQuestion;
+                aiChatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+            });
+            });
+
+        });
+    </script>
+</body>
+</html>
